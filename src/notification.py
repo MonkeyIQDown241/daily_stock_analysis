@@ -44,6 +44,7 @@ from src.notification_sender import (
     Serverchan3Sender,
     SlackSender,
     TelegramSender,
+    WechatMpSender,
     WechatSender,
     WECHAT_IMAGE_MAX_BYTES
 )
@@ -54,6 +55,7 @@ logger = logging.getLogger(__name__)
 class NotificationChannel(Enum):
     """通知渠道类型"""
     WECHAT = "wechat"      # 企业微信
+    WECHAT_MP = "wechat_mp"  # 微信公众号模板消息
     FEISHU = "feishu"      # 飞书
     TELEGRAM = "telegram"  # Telegram
     EMAIL = "email"        # 邮件
@@ -79,6 +81,7 @@ class ChannelDetector:
         """获取渠道中文名称"""
         names = {
             NotificationChannel.WECHAT: "企业微信",
+            NotificationChannel.WECHAT_MP: "微信公众号",
             NotificationChannel.FEISHU: "飞书",
             NotificationChannel.TELEGRAM: "Telegram",
             NotificationChannel.EMAIL: "邮件",
@@ -105,6 +108,7 @@ class NotificationService(
     Serverchan3Sender,
     SlackSender,
     TelegramSender,
+    WechatMpSender,
     WechatSender
 ):
     """
@@ -158,6 +162,7 @@ class NotificationService(
         Serverchan3Sender.__init__(self, config)
         SlackSender.__init__(self, config)
         TelegramSender.__init__(self, config)
+        WechatMpSender.__init__(self, config)
         WechatSender.__init__(self, config)
 
         # 检测所有已配置的渠道
@@ -265,6 +270,10 @@ class NotificationService(
         """
         channels = []
         
+        # 微信公众号模板消息
+        if self._wechat_mp_appid and self._wechat_mp_secret and self._wechat_mp_template_id and self._wechat_mp_user_openid:
+            channels.append(NotificationChannel.WECHAT_MP)
+
         # 企业微信
         if self._wechat_url:
             channels.append(NotificationChannel.WECHAT)
@@ -1629,7 +1638,9 @@ class NotificationService(
             channel_name = ChannelDetector.get_channel_name(channel)
             use_image = self._should_use_image_for_channel(channel, image_bytes)
             try:
-                if channel == NotificationChannel.WECHAT:
+                if channel == NotificationChannel.WECHAT_MP:
+                    result = self.send_to_wechat_mp(content)
+                elif channel == NotificationChannel.WECHAT:
                     if use_image:
                         result = self._send_wechat_image(image_bytes)
                     else:

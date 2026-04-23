@@ -120,6 +120,15 @@ jobs:
           # 通知渠道（可同时配置多个，全部推送）
           # ==========================================
           
+          # 方式零：微信公众号模板消息（个人公众号，多字段模板）
+          WECHAT_MP_APPID:            ${{ secrets.WECHAT_MP_APPID }}
+          WECHAT_MP_SECRET:           ${{ secrets.WECHAT_MP_SECRET }}
+          WECHAT_MP_TEMPLATE_ID:      ${{ secrets.WECHAT_MP_TEMPLATE_ID }}
+          WECHAT_MP_USER_OPENID:      ${{ secrets.WECHAT_MP_USER_OPENID }}
+          WECHAT_MP_CITY_ID:          ${{ vars.WECHAT_MP_CITY_ID || '45.5017,-73.5673' }}
+          WECHAT_MP_TIMEZONE:         ${{ vars.WECHAT_MP_TIMEZONE || 'America/Montreal' }}
+          WECHAT_MP_DESTINATION_TEXT: ${{ vars.WECHAT_MP_DESTINATION_TEXT }}
+          
           # 方式一：企业微信 Webhook
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
           WECHAT_MSG_TYPE: ${{ vars.WECHAT_MSG_TYPE || secrets.WECHAT_MSG_TYPE || 'markdown' }}
@@ -291,7 +300,7 @@ jobs:
             reports/
             logs/
           retention-days: 30
-      
+
       - name: 显示运行结果
         if: always()
         run: |
