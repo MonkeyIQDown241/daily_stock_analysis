@@ -114,8 +114,8 @@ _WEATHER_CODE_NAMES = {
 }
 
 _DEFAULT_DESTINATION = (
-    "Meeting Countdown: > Error 404:\n"
-    "System is currently retrying... I'm working on a better version of the bridge."
+    "Meeting Countdown: > Error 404: System is currently retrying... "
+    "I'm working on a better version of the bridge."
 )
 
 # 单字段大致上限（公众号实测约 200 字符，留余量）
@@ -250,26 +250,42 @@ class WechatMpSender:
         commentary = self._get_commentary(weather['code'])
         stock_summary = self._summarize(content)
 
+        # 统一清理：去掉可能导致字段不显示的控制符，并截断到上限
+        def _clean(text: str) -> str:
+            text = (text or '').replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+            text = ' '.join(text.split())  # 压缩连续空格
+            if len(text) > _FIELD_MAX_CHARS:
+                text = text[:_FIELD_MAX_CHARS - 1] + '…'
+            return text or '-'
+
+        data = {
+            "date":        {"value": _clean(self._get_local_time()),                                                              "color": "#173177"},
+            "weather":     {"value": _clean(f"{weather['name']}, {weather['temp']} (feels like {weather['feels_like']})"),         "color": "#FF6347"},
+            "remark":      {"value": _clean(f"Wind: {weather['wind']} | Humidity: {weather['humidity']}"),                         "color": "#666666"},
+            "destination": {"value": _clean(self._wechat_mp_destination_text),                                                     "color": "#888888"},
+            "joke1":       {"value": _clean(commentary),                                                                           "color": "#5B8DB8"},
+            "joke2":       {"value": _clean(stock_summary),                                                                        "color": "#2E7D32"},
+        }
+
         message = {
             "touser": self._wechat_mp_user_openid,
             "template_id": self._wechat_mp_template_id,
-            "url": "",
             "topcolor": "#FF0000",
-            "data": {
-                "date":        {"value": self._get_local_time(), "color": "#173177"},
-                "weather":     {"value": f"{weather['name']}, {weather['temp']} (feels like {weather['feels_like']})", "color": "#FF6347"},
-                "remark":      {"value": f"Wind: {weather['wind']} | Humidity: {weather['humidity']}", "color": "#666666"},
-                "destination": {"value": self._wechat_mp_destination_text, "color": "#888888"},
-                "joke1":       {"value": commentary, "color": "#5B8DB8"},
-                "joke2":       {"value": stock_summary, "color": "#2E7D32"},
-            },
+            "data": data,
         }
+
+        # 调试：打印实际发送的各字段长度，方便发现某字段被截空
+        logger.info(
+            "微信MP待发送字段长度: %s",
+            {k: len(v['value']) for k, v in data.items()},
+        )
 
         try:
             url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={token}"
             resp = requests.post(url, json=message, timeout=10).json()
+            logger.info("微信MP响应: %s", resp)  # 调试：完整响应
             if resp.get('errcode') == 0:
-                logger.info("微信公众号模板消息发送成功")
+                logger.info("微信公众号模板消息发送成功 (msgid=%s)", resp.get('msgid'))
                 return True
             logger.error("微信公众号模板消息发送失败: %s", resp)
         except Exception as e:
