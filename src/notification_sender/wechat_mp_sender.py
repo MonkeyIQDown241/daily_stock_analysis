@@ -340,12 +340,15 @@ class WechatMpSender:
         """从大盘复盘报告中提取 joke 槽位内容。
 
         提取规则（对应 joke1-7）:
-          - 一、市场总结 → 首条有效句          (1 行)
-          - 二、主要指数 → 各指数行，最多 4 条  (4 行)
-          - 四、板块表现 → 领涨/领跌行，最多 2 条 (2 行)
+          - 一、市场总结 → 第一条有效句        (1 行)
+          - 二、主要指数/指数点评 → 指数数据    (4 行)
+            · 优先解析注入的 markdown 表格 (| 指数 | 点位 | 涨跌幅 |)
+            · 没有表格则取 bullet 列表项
+          - 四、板块表现/热点解读 → 领涨/领跌  (2 行)
+            · 支持 `> 🔥 领涨:` 注入格式 或 `- 领涨:` bullet 格式
 
-        若报告不含 ### 章节标题（格式不匹配），退回逐行 fallback。
-        不足 slots 补 '-'，超出 slots 截断。
+        若报告不含 ### 章节标题，退回逐行 fallback。
+        不足 slots 补 '-'，超出截断。
         """
         import re
 
@@ -356,56 +359,80 @@ class WechatMpSender:
         if not headings:
             # fallback：无章节结构，逐行提取
             lines = self._extract_lines(content)
-            result = [lines[i] if i < len(lines) else '-' for i in range(slots)]
-            return result
+            return [lines[i] if i < len(lines) else '-' for i in range(slots)]
 
         # 构建 {章节首字: 内容块} 映射
         sections: dict = {}
         for idx, m in enumerate(headings):
             start = m.end()
             end = headings[idx + 1].start() if idx + 1 < len(headings) else len(content)
-            key = m.group(1)[0]  # 取"一"/"二"/"四"等首字
+            key = m.group(1)[0]  # '一'/'二'/'四' 等
             sections[key] = content[start:end]
 
         def clean_line(raw: str) -> str:
-            """清理单行 markdown 修饰符，保留可读文本。"""
             s = raw.strip()
             s = re.sub(r'!\[.*?\]\(.*?\)', '', s)
             s = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', s)
-            s = re.sub(r'[*_`>]+', '', s)
-            s = re.sub(r'^\|.*', '', s)          # 去除表格行
+            s = re.sub(r'[*_`]+', '', s)   # 去 markdown 强调（保留 >）
             s = re.sub(r'^[-•]\s*', '', s)
             s = re.sub(r'\s+', ' ', s).strip()
             return s
 
-        def extract_lines_from_block(block: str) -> list:
-            result = []
-            for raw in block.splitlines():
-                s = clean_line(raw)
-                if s:
-                    result.append(s)
-            return result
-
         jokes: list = []
 
-        # 一、市场总结 → joke1
+        # ── joke1：一、市场总结 → 第一条有效非引用行 ──────────────
         block1 = sections.get('一', '')
-        lines1 = extract_lines_from_block(block1)
-        jokes.append(lines1[0] if lines1 else '-')
+        s1 = '-'
+        for raw in block1.splitlines():
+            s = clean_line(raw)
+            # 跳过统计注入行（以 > 开头）
+            if s and not s.startswith('>') and not s.startswith('|'):
+                s1 = s
+                break
+        jokes.append(s1)
 
-        # 二、主要指数 → joke2-5（最多 4 条）
+        # ── joke2-5：二、指数点评/主要指数 ──────────────────────
         block2 = sections.get('二', '')
-        lines2 = extract_lines_from_block(block2)
-        for i in range(4):
-            jokes.append(lines2[i] if i < len(lines2) else '-')
 
-        # 四、板块表现 → joke6-7（领涨/领跌，最多 2 条）
+        # 优先尝试解析注入的 markdown 表格
+        # 格式: | 上证指数 | 4093.25 | 🔴 -0.32% | xxx |
+        table_rows = []
+        for raw in block2.splitlines():
+            s = raw.strip()
+            if not s.startswith('|') or s.startswith('|---') or s.startswith('| 指数') or s.startswith('| Index'):
+                continue
+            cells = [c.strip() for c in s.strip('|').split('|')]
+            if len(cells) >= 3:
+                name = re.sub(r'[*_`]+', '', cells[0]).strip()
+                price = cells[1].strip()
+                pct = re.sub(r'[🔴🟢⚪]', '', cells[2]).strip()
+                if name and price:
+                    table_rows.append(f"{name}: {price} ({pct})")
+
+        if table_rows:
+            for i in range(4):
+                jokes.append(table_rows[i] if i < len(table_rows) else '-')
+        else:
+            # 没有表格：取 bullet 行或普通行
+            idx_lines = []
+            for raw in block2.splitlines():
+                s = clean_line(raw)
+                if s and not s.startswith('>') and not s.startswith('|'):
+                    idx_lines.append(s)
+            for i in range(4):
+                jokes.append(idx_lines[i] if i < len(idx_lines) else '-')
+
+        # ── joke6-7：四、板块表现/热点解读 → 领涨/领跌 ──────────
         block4 = sections.get('四', '')
         sector_lines = []
         for raw in block4.splitlines():
             s = clean_line(raw)
-            if s and ('领涨' in s or '领跌' in s or 'Leader' in s or 'Laggard' in s):
-                sector_lines.append(s)
+            # 支持 `> 🔥 领涨:` 注入行 和 `- 领涨:` bullet 行
+            s_no_bracket = s.lstrip('> ').strip()
+            s_no_bracket = re.sub(r'[🔥💧🌊🚀]+', '', s_no_bracket).strip()
+            if '领涨' in s_no_bracket or '领跌' in s_no_bracket or \
+               'Leader' in s_no_bracket or 'Laggard' in s_no_bracket:
+                sector_lines.append(s_no_bracket)
         for i in range(2):
             jokes.append(sector_lines[i] if i < len(sector_lines) else '-')
 
