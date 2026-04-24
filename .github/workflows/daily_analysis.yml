@@ -124,6 +124,7 @@ jobs:
           WECHAT_MP_APPID:            ${{ secrets.WECHAT_MP_APPID }}
           WECHAT_MP_SECRET:           ${{ secrets.WECHAT_MP_SECRET }}
           WECHAT_MP_TEMPLATE_ID:      ${{ secrets.WECHAT_MP_TEMPLATE_ID }}
+          WECHAT_MP_STOCK_TEMPLATE_ID: ${{ secrets.WECHAT_MP_STOCK_TEMPLATE_ID }}
           WECHAT_MP_USER_OPENID:      ${{ secrets.WECHAT_MP_USER_OPENID }}
           WECHAT_MP_CITY_ID:          ${{ vars.WECHAT_MP_CITY_ID || '45.5017,-73.5673' }}
           WECHAT_MP_TIMEZONE:         ${{ vars.WECHAT_MP_TIMEZONE || 'America/Montreal' }}

@@ -544,6 +544,7 @@ class Config:
     wechat_mp_appid: Optional[str] = None
     wechat_mp_secret: Optional[str] = None
     wechat_mp_template_id: Optional[str] = None
+    wechat_mp_stock_template_id: Optional[str] = None  # 股票专用模板（设置后发两条）
     wechat_mp_user_openid: Optional[str] = None
     wechat_mp_city_id: str = "45.5017,-73.5673"  # 天气坐标 lat,lon（默认 Montreal）
     wechat_mp_timezone: str = "America/Montreal"  # 时区（影响 date 字段）
@@ -1234,6 +1235,7 @@ class Config:
             wechat_mp_appid=os.getenv('WECHAT_MP_APPID'),
             wechat_mp_secret=os.getenv('WECHAT_MP_SECRET'),
             wechat_mp_template_id=os.getenv('WECHAT_MP_TEMPLATE_ID'),
+            wechat_mp_stock_template_id=os.getenv('WECHAT_MP_STOCK_TEMPLATE_ID'),
             wechat_mp_user_openid=os.getenv('WECHAT_MP_USER_OPENID'),
             wechat_mp_city_id=os.getenv('WECHAT_MP_CITY_ID', '45.5017,-73.5673'),
             wechat_mp_timezone=os.getenv('WECHAT_MP_TIMEZONE', 'America/Montreal'),
