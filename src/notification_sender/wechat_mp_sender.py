@@ -337,51 +337,82 @@ class WechatMpSender:
         return pieces
 
     def _pick_summaries(self, content: str, slots: int) -> list:
-        """从 markdown 报告中按章节提取股票简报内容填充槽位。
+        """从大盘复盘报告中提取 joke 槽位内容。
 
         提取规则（对应 joke1-7）:
           - 一、市场总结 → 首条有效句          (1 行)
           - 二、主要指数 → 各指数行，最多 4 条  (4 行)
           - 四、板块表现 → 领涨/领跌行，最多 2 条 (2 行)
+
+        若报告不含 ### 章节标题（格式不匹配），退回逐行 fallback。
         不足 slots 补 '-'，超出 slots 截断。
         """
         import re
-        lines = self._extract_lines(content)
 
-        # 按"一、""二、"等中文序号章节分组
-        section_pattern = re.compile(r'^[一二三四五六七八九十]+[、.]')
+        # ── 按 ### 章节切分原始文本 ──────────────────────────────
+        heading_pattern = re.compile(r'^#{1,4}\s*([一二三四五六七八九十]+[、.].*)', re.MULTILINE)
+        headings = list(heading_pattern.finditer(content))
+
+        if not headings:
+            # fallback：无章节结构，逐行提取
+            lines = self._extract_lines(content)
+            result = [lines[i] if i < len(lines) else '-' for i in range(slots)]
+            return result
+
+        # 构建 {章节首字: 内容块} 映射
         sections: dict = {}
-        current_key: str = ''
-        for line in lines:
-            if section_pattern.match(line):
-                current_key = line
-                sections[current_key] = []
-            elif current_key:
-                sections[current_key].append(line)
+        for idx, m in enumerate(headings):
+            start = m.end()
+            end = headings[idx + 1].start() if idx + 1 < len(headings) else len(content)
+            key = m.group(1)[0]  # 取"一"/"二"/"四"等首字
+            sections[key] = content[start:end]
 
-        def get_sec(num_char: str) -> list:
-            for key, val in sections.items():
-                if key.startswith(num_char):
-                    return val
-            return []
+        def clean_line(raw: str) -> str:
+            """清理单行 markdown 修饰符，保留可读文本。"""
+            s = raw.strip()
+            s = re.sub(r'!\[.*?\]\(.*?\)', '', s)
+            s = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', s)
+            s = re.sub(r'[*_`>]+', '', s)
+            s = re.sub(r'^\|.*', '', s)          # 去除表格行
+            s = re.sub(r'^[-•]\s*', '', s)
+            s = re.sub(r'\s+', ' ', s).strip()
+            return s
 
-        result: list = []
+        def extract_lines_from_block(block: str) -> list:
+            result = []
+            for raw in block.splitlines():
+                s = clean_line(raw)
+                if s:
+                    result.append(s)
+            return result
+
+        jokes: list = []
+
         # 一、市场总结 → joke1
-        s1 = get_sec('一')
-        result.append(s1[0] if s1 else '-')
+        block1 = sections.get('一', '')
+        lines1 = extract_lines_from_block(block1)
+        jokes.append(lines1[0] if lines1 else '-')
+
         # 二、主要指数 → joke2-5（最多 4 条）
-        s2 = get_sec('二')
+        block2 = sections.get('二', '')
+        lines2 = extract_lines_from_block(block2)
         for i in range(4):
-            result.append(s2[i] if i < len(s2) else '-')
-        # 四、板块表现 → joke6-7（最多 2 条）
-        s4 = get_sec('四')
+            jokes.append(lines2[i] if i < len(lines2) else '-')
+
+        # 四、板块表现 → joke6-7（领涨/领跌，最多 2 条）
+        block4 = sections.get('四', '')
+        sector_lines = []
+        for raw in block4.splitlines():
+            s = clean_line(raw)
+            if s and ('领涨' in s or '领跌' in s or 'Leader' in s or 'Laggard' in s):
+                sector_lines.append(s)
         for i in range(2):
-            result.append(s4[i] if i < len(s4) else '-')
+            jokes.append(sector_lines[i] if i < len(sector_lines) else '-')
 
         # 补足或截断到 slots
-        while len(result) < slots:
-            result.append('-')
-        return result[:slots]
+        while len(jokes) < slots:
+            jokes.append('-')
+        return jokes[:slots]
 
     # ---------- 入口 ----------
     def send_to_wechat_mp(self, content: str) -> bool:
