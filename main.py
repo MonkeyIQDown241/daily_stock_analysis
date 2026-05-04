@@ -431,6 +431,12 @@ def run_full_analysis(
             logger.info(
                 "今日所有相关市场均为非交易日，跳过执行。可使用 --force-run 强制执行。"
             )
+            if not getattr(args, 'no_notify', False):
+                try:
+                    from src.notification_sender.wechat_mp_sender import WechatMpSender
+                    WechatMpSender(config).send_to_wechat_mp('')
+                except Exception as _e:
+                    logger.warning("非交易日天气推送失败: %s", _e)
             return
         if set(filtered_codes) != set(effective_codes):
             skipped = set(effective_codes) - set(filtered_codes)
