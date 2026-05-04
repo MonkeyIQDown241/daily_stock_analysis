@@ -198,11 +198,25 @@ class WechatMpSender:
                 'temp': '--', 'feels_like': '--', 'wind': '--', 'humidity': '--',
             }
 
+    _TIMEZONE_DISPLAY_NAMES = {
+        'Asia/Shanghai': 'Beijing',
+        'Asia/Beijing': 'Beijing',
+        'Asia/Hong_Kong': 'Hong Kong',
+        'Asia/Tokyo': 'Tokyo',
+        'Asia/Singapore': 'Singapore',
+        'America/New_York': 'New York',
+        'America/Los_Angeles': 'Los Angeles',
+        'America/Montreal': 'Montreal',
+        'Europe/London': 'London',
+        'Europe/Paris': 'Paris',
+    }
+
     def _get_local_time(self) -> str:
+        city = self._TIMEZONE_DISPLAY_NAMES.get(self._wechat_mp_timezone, self._wechat_mp_timezone)
         if ZoneInfo:
             try:
                 now = datetime.now(ZoneInfo(self._wechat_mp_timezone))
-                return now.strftime("%b %d, %Y %H:%M")
+                return now.strftime(f"%b %d, %Y %H:%M") + f" in {city}"
             except Exception:
                 pass
         return datetime.utcnow().strftime("%b %d, %Y %H:%M UTC")
